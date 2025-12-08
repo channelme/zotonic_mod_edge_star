@@ -1,0 +1,11 @@
+{application, zotonic_mod_edge_star, [
+    {description, "RDF-star inspired reify edges as resources to enable discussion and metadata about relationships"},
+    {vsn, git},
+    {registered, []},
+    {applications, [kernel, stdlib, zotonic_core]},
+    {env, []},
+    {modules, []},
+    {maintainers, []},
+    {licenses, ["Apache 2.0"]},
+    {links, [{"GitHub", "https://github.com/channelme/zotonic_mod_edge_star"}]}
+]}.
