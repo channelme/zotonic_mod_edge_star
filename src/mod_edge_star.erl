@@ -14,6 +14,7 @@
 ]).
 
 manage_schema(_Version, Context) ->
+    update_datamodel(Context),
     m_edge_star:install(Context),
     ok.
 
@@ -23,7 +24,7 @@ update_datamodel(Context) ->
 datamodel() ->
     #datamodel{
        categories = [
-                     {edge_resource, meta, [{title, <<"Edge Reesource">>},
+                     {edge_resource, meta, [{title, <<"Edge Resource">>},
                                             {summary, <<"A reified edge, a resource representing a relationship between two other resources">>}
                                            ]}
                     ]
