@@ -1,38 +1,87 @@
 
 -module(m_edge_star).
+-author("Maas-Maarten Zeeman <maas@channel.me>").
+-behaviour(zotonic_model).
+
+-export([
+    m_get/3
+]).
 
 -export([
     insert/4, insert/5,
+    object_edge_ids/3,
     reify/2,
     install/1
 ]).
 
 -include_lib("zotonic_core/include/zotonic.hrl").
 
+m_get([ <<"o">>, Id, Predicate | Rest ], _Msg, Context) ->
+    case z_acl:rsc_visible(Id, Context) of
+        true ->
+            {ok, {object_edge_ids(Id, Predicate, Context), Rest}};
+        false ->
+            {error, eacces}
+    end;
+m_get(_Path, _Msg, _Context) ->
+    {error, unknown_path}.
+
+object_edge_ids({_, _, _}=Triple, Pred, Context) ->
+    case get_rsc_id(Triple, Context) of
+        Object when is_integer(Object) ->
+            [begin
+                 case m_rsc:is_a(RscId, edge_resource, Context) of
+                     true ->
+                         Triple = {_S, _P, _O} = m_edge:get_triple(get_edge_id(RscId, Context), Context),
+                         {Triple, EdgeId};
+                     false ->
+                         {RscId, EdgeId}
+                 end
+             end || {RscId, EdgeId} <- m_edge:object_edge_ids(Object, Pred, Context) ];
+        undefined ->
+            []
+    end;
+object_edge_ids(Id, Pred, Context) ->
+    [begin
+         case m_rsc:is_a(RscId, edge_resource, Context) of
+             true ->
+                 Triple = {_S, _P, _O} = m_edge:get_triple(get_edge_id(RscId, Context), Context),
+                 {Triple, EdgeId};
+             false ->
+                 {RscId, EdgeId}
+         end
+     end || {RscId, EdgeId} <- m_edge:object_edge_ids(Id, Pred, Context) ].
+
 insert(Subject, Predicate, Object, Context) ->
     insert(Subject, Predicate, Object, [], Context).
-
+insert(Subject, Predicate, {S, P, O}, Opts, Context) when is_tuple(O) ->
+    case get_rsc_id(O, Context) of
+        undefined -> {error, enoent};
+        Id -> insert(Subject, Predicate, {S, P, Id}, Opts, Context)
+    end;
+insert(Subject, Predicate, {S, P, O}, Opts, Context) when is_integer(O) ->
+    insert(Subject, Predicate, {edge, m_edge:get_id(S, P, O, Context)}, Opts, Context);
+insert(_Subject, _Predicate, {edge, undefined}, _Opts, _Context) ->
+    {error, enoent};
 insert(Subject, Predicate, {edge, EdgeId}, Opts, Context) ->
     T = fun(Ctx) ->
                 case reify(EdgeId, Ctx) of 
-                    {ok, ReifiedEdgeId} ->
+                    ReifiedEdgeId when is_integer(ReifiedEdgeId) ->
                         insert(Subject, Predicate, ReifiedEdgeId, Opts, Ctx);
                     {error, _}=Error ->
                         Error
                 end
         end,
-    case z_db:transaction(T, Context) of
-        {ok, EdgeId} ->
-            {ok, EdgeId};
-        {error, _}=Error ->
-            Error
+    case z_db:transaction(T, z_acl:sudo(Context)) of
+        {ok, NewEdgeId} -> {ok, NewEdgeId};
+        {error, _}=Error -> Error
     end;
 insert(Subject, Predicate, Object, Opts, Context) when is_integer(Object) ->
     m_edge:insert(Subject, Predicate, Object, Opts, Context).
 
 reify(EdgeId, Context) ->
     T = fun(Ctx) ->
-                case get_reified(EdgeId, Ctx) of
+                case get_rsc_id(EdgeId, Ctx) of
                     Id when is_integer(Id) ->
                         {ok, Id};
                     undefined ->
@@ -67,13 +116,17 @@ reify(EdgeId, Context) ->
             Error
     end.
 
-get_reified(EdgeId, Context) ->
-    z_db:q1("SELECT
-                 rsc_id
-            FROM
-                 edge_star
-            WHERE
-                edge_id = $1", [EdgeId], Context).
+get_rsc_id({Subject, Predicate, Object}, Context) when is_integer(Object) ->
+    get_rsc_id(m_edge:get_id(Subject, Predicate, Object, Context), Context);
+get_rsc_id({Subject, Predicate, Object}, Context) when is_tuple(Object) ->
+    get_rsc_id({Subject, Predicate, get_rsc_id(Object, Context)}, Context);
+get_rsc_id(undefined, _Context) ->
+    undefined;
+get_rsc_id(EdgeId, Context) ->
+    z_db:q1("SELECT rsc_id FROM edge_star WHERE edge_id = $1", [EdgeId], Context).
+
+get_edge_id(RscId, Context) ->
+    z_db:q1("SELECT edge_id FROM edge_star WHERE rsc_id = $1", [RscId], Context).
 
 install(Context) ->
     case z_db:table_exists(edge_star, Context) of
@@ -94,6 +147,10 @@ install(Context) ->
         true ->
             ok
     end.
+
+%%
+%% Helpers
+%%
 
 make_title({Subject, Predicate, Object}, Context) ->
     SubjectTitle = resource_title(Subject, Context),

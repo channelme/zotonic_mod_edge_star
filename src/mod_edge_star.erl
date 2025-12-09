@@ -3,7 +3,7 @@
 -module(mod_edge_star).
 -mod_title("Edge Star").
 -mod_description("RDF-star inspired reify edges as resources to enable discussion and metadata about relationships").
--mod_prio(300).
+-mod_prio(2).
 -mod_schema(1).
 
 -include_lib("zotonic_core/include/zotonic.hrl").
