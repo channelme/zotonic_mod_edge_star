@@ -77,7 +77,8 @@ subjects({_, _, _}=Triple, Predicate, Context) ->
     case get_rsc_id(Triple, Context) of
         Id when is_integer(Id) ->
             m_rsc:subjects(Id, Predicate, Context);
-        undefined -> []
+        undefined ->
+            []
     end.
 
 objects({_, _, _}, undefined, _Context) ->
@@ -86,7 +87,8 @@ objects({_, _, _}=Triple, Predicate, Context) ->
     case get_rsc_id(Triple, Context) of
         Id when is_integer(Id) ->
             m_rsc:objects(Id, Predicate, Context);
-        undefined -> []
+        undefined ->
+            []
     end.
 
 insert(Subject, Predicate, Object, Context) ->
