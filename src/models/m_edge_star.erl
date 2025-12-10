@@ -9,6 +9,7 @@
 
 -export([
     insert/4, insert/5,
+    subject_edge_ids/3,
     object_edge_ids/3,
     reify/2,
     install/1
@@ -27,30 +28,25 @@ m_get(_Path, _Msg, _Context) ->
     {error, unknown_path}.
 
 object_edge_ids({_, _, _}=Triple, Pred, Context) ->
+    %% Note: RDF 1.2 does not allow triples to become subjects. So maybe this is nonsense.
     case get_rsc_id(Triple, Context) of
         Object when is_integer(Object) ->
-            [begin
-                 case m_rsc:is_a(RscId, edge_resource, Context) of
-                     true ->
-                         Triple = {_S, _P, _O} = m_edge:get_triple(get_edge_id(RscId, Context), Context),
-                         {Triple, EdgeId};
-                     false ->
-                         {RscId, EdgeId}
-                 end
-             end || {RscId, EdgeId} <- m_edge:object_edge_ids(Object, Pred, Context) ];
+            [ maybe_expand_triple(RscId, EdgeId, Context) || {RscId, EdgeId} <- m_edge:object_edge_ids(Object, Pred, Context) ];
         undefined ->
             []
     end;
 object_edge_ids(Id, Pred, Context) ->
-    [begin
-         case m_rsc:is_a(RscId, edge_resource, Context) of
-             true ->
-                 Triple = {_S, _P, _O} = m_edge:get_triple(get_edge_id(RscId, Context), Context),
-                 {Triple, EdgeId};
-             false ->
-                 {RscId, EdgeId}
-         end
-     end || {RscId, EdgeId} <- m_edge:object_edge_ids(Id, Pred, Context) ].
+    [ maybe_expand_triple(RscId, EdgeId, Context) || {RscId, EdgeId} <- m_edge:object_edge_ids(Id, Pred, Context) ].
+
+subject_edge_ids({_, _, _}=Triple, Pred, Context) ->
+    case get_rsc_id(Triple, Context) of
+        Object when is_integer(Object) ->
+            [ maybe_expand_triple(RscId, EdgeId, Context) || {RscId, EdgeId} <- m_edge:subject_edge_ids(Object, Pred, Context) ];
+        undefined ->
+            []
+    end;
+subject_edge_ids(Id, Pred, Context) ->
+    [ maybe_expand_triple(RscId, EdgeId, Context) || {RscId, EdgeId} <- m_edge:subject_edge_ids(Id, Pred, Context) ].
 
 insert(Subject, Predicate, Object, Context) ->
     insert(Subject, Predicate, Object, [], Context).
@@ -151,6 +147,15 @@ install(Context) ->
 %%
 %% Helpers
 %%
+
+maybe_expand_triple(Id, EdgeId, Context) ->
+    case m_rsc:is_a(Id, edge_resource, Context) of
+        true ->
+            Triple = {_S, _P, _O} = m_edge:get_triple(get_edge_id(Id, Context), Context),
+            {Triple, EdgeId};
+        false ->
+            {Id, EdgeId}
+    end.
 
 make_title({Subject, Predicate, Object}, Context) ->
     SubjectTitle = resource_title(Subject, Context),
