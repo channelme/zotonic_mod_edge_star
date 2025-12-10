@@ -17,6 +17,12 @@
 
 -include_lib("zotonic_core/include/zotonic.hrl").
 
+%%
+%% Model topic api
+%%
+
+m_get([ <<"o">>, TS, TP, TO, Predicate | Rest ], _Msg, Context) ->
+    {ok, {object_edge_ids({TS, TP, TO}, Predicate, Context), Rest}};
 m_get([ <<"o">>, Id, Predicate | Rest ], _Msg, Context) ->
     case z_acl:rsc_visible(Id, Context) of
         true ->
@@ -24,8 +30,23 @@ m_get([ <<"o">>, Id, Predicate | Rest ], _Msg, Context) ->
         false ->
             {error, eacces}
     end;
+
+m_get([ <<"s">>, TS, TP, TO, Predicate | Rest ], _Msg, Context) ->
+    {ok, {subject_edge_ids({TS, TP, TO}, Predicate, Context), Rest}};
+m_get([ <<"s">>, Id, Predicate | Rest ], _Msg, Context) ->
+    case z_acl:rsc_visible(Id, Context) of
+        true ->
+            {ok, {subject_edge_ids(Id, Predicate, Context), Rest}};
+        false ->
+            {error, eacces}
+    end;
+
 m_get(_Path, _Msg, _Context) ->
     {error, unknown_path}.
+
+%%
+%% Api
+%%
 
 object_edge_ids({_, _, _}=Triple, Pred, Context) ->
     %% Note: RDF 1.2 does not allow triples to become subjects. So maybe this is nonsense.
@@ -119,10 +140,12 @@ get_rsc_id({Subject, Predicate, Object}, Context) when is_tuple(Object) ->
 get_rsc_id(undefined, _Context) ->
     undefined;
 get_rsc_id(EdgeId, Context) ->
-    z_db:q1("SELECT rsc_id FROM edge_star WHERE edge_id = $1", [EdgeId], Context).
+    Memo = fun() -> z_db:q1("SELECT rsc_id FROM edge_star WHERE edge_id = $1", [EdgeId], Context) end,
+    z_depcache:memo(Memo, {edge_star, rsc_id, EdgeId}, ?DAY, [ ], Context).
 
 get_edge_id(RscId, Context) ->
-    z_db:q1("SELECT edge_id FROM edge_star WHERE rsc_id = $1", [RscId], Context).
+    Memo = fun() -> z_db:q1("SELECT rsc_id FROM edge_star WHERE rsc_id = $1", [RscId], Context) end,
+    z_depcache:memo(Memo, {edge_star, edge_id, RscId}, ?DAY, [ RscId ], Context).
 
 install(Context) ->
     case z_db:table_exists(edge_star, Context) of
@@ -134,8 +157,22 @@ install(Context) ->
                     #column_def{name=created, type="timestamp with time zone", is_nullable=false, default="now()"}
                    ], Context),
 
-            {ok, _, _} = z_db:equery("alter table edge_star add constraint fk_edge_star_edge_id foreign key (edge_id) references edge(id) on update cascade on delete cascade", Context),
-            {ok, _, _} = z_db:equery("alter table edge_star add constraint fk_edge_star_rsc_id foreign key (rsc_id) references rsc(id) on update cascade on delete cascade", Context),
+            {ok, _, _} = z_db:equery("ALTER TABLE
+                                          edge_star
+                                     ADD CONSTRAINT
+                                         fk_edge_star_edge_id
+                                         FOREIGN KEY (edge_id)
+                                         REFERENCES edge(id)
+                                     ON UPDATE CASCADE
+                                     ON DELETE CASCADE", Context),
+            {ok, _, _} = z_db:equery("ALTER TABLE
+                                         edge_star
+                                     ADD CONSTRAINT
+                                         fk_edge_star_rsc_id
+                                         FOREIGN KEY (rsc_id)
+                                         REFERENCES rsc(id)
+                                     ON UPDATE CASCADE
+                                     ON DELETE CASCADE", Context),
 
             z_db:flush(Context),
 
