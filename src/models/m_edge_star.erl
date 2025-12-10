@@ -11,6 +11,8 @@
     insert/4, insert/5,
     subject_edge_ids/3,
     object_edge_ids/3,
+    objects/3,
+    subjects/3,
     reify/2,
     install/1
 ]).
@@ -68,6 +70,24 @@ subject_edge_ids({_, _, _}=Triple, Pred, Context) ->
     end;
 subject_edge_ids(Id, Pred, Context) ->
     [ maybe_expand_triple(RscId, EdgeId, Context) || {RscId, EdgeId} <- m_edge:subject_edge_ids(Id, Pred, Context) ].
+
+subjects({_, _, _}, undefined, _Context) ->
+    [];
+subjects({_, _, _}=Triple, Predicate, Context) ->
+    case get_rsc_id(Triple, Context) of
+        Id when is_integer(Id) ->
+            m_rsc:subjects(Id, Predicate, Context);
+        undefined -> []
+    end.
+
+objects({_, _, _}, undefined, _Context) ->
+    [];
+objects({_, _, _}=Triple, Predicate, Context) ->
+    case get_rsc_id(Triple, Context) of
+        Id when is_integer(Id) ->
+            m_rsc:objects(Id, Predicate, Context);
+        undefined -> []
+    end.
 
 insert(Subject, Predicate, Object, Context) ->
     insert(Subject, Predicate, Object, [], Context).
@@ -141,11 +161,11 @@ get_rsc_id(undefined, _Context) ->
     undefined;
 get_rsc_id(EdgeId, Context) ->
     Memo = fun() -> z_db:q1("SELECT rsc_id FROM edge_star WHERE edge_id = $1", [EdgeId], Context) end,
-    z_depcache:memo(Memo, {edge_star, rsc_id, EdgeId}, ?DAY, [ ], Context).
+    z_depcache:memo(Memo, {edge_star, rsc_id, EdgeId}, ?HOUR, [ ], Context).
 
 get_edge_id(RscId, Context) ->
     Memo = fun() -> z_db:q1("SELECT rsc_id FROM edge_star WHERE rsc_id = $1", [RscId], Context) end,
-    z_depcache:memo(Memo, {edge_star, edge_id, RscId}, ?DAY, [ RscId ], Context).
+    z_depcache:memo(Memo, {edge_star, edge_id, RscId}, ?HOUR, [ RscId ], Context).
 
 install(Context) ->
     case z_db:table_exists(edge_star, Context) of
