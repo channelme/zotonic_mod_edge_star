@@ -105,7 +105,7 @@ insert(_Subject, _Predicate, {edge, undefined}, _Opts, _Context) ->
 insert(Subject, Predicate, {edge, EdgeId}, Opts, Context) ->
     T = fun(Ctx) ->
                 case reify(EdgeId, Ctx) of 
-                    ReifiedEdgeId when is_integer(ReifiedEdgeId) ->
+                    {ok, ReifiedEdgeId} ->
                         insert(Subject, Predicate, ReifiedEdgeId, Opts, Ctx);
                     {error, _}=Error ->
                         Error
@@ -148,12 +148,7 @@ reify(EdgeId, Context) ->
                 end
         end,
 
-    case z_db:transaction(T, z_acl:sudo(Context)) of
-        {ok, Id} ->
-            Id;
-        {error, _}=Error ->
-            Error
-    end.
+    z_db:transaction(T, z_acl:sudo(Context)).
 
 get_rsc_id({Subject, Predicate, Object}, Context) when is_integer(Object) ->
     get_rsc_id(m_edge:get_id(Subject, Predicate, Object, Context), Context);
