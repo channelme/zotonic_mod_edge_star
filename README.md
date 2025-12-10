@@ -13,7 +13,7 @@ This module allows you to "reify" edges turn them into resources themselves. Onc
 - 📝 Add metadata to edges
 - 🔗 Create edges pointing to other edges (meta-relationships)
 
-This is inspired by [RDF-star (RDF 1.2)](https://www.w3.org/TR/rdf12-concepts/) quoted triples.
+This is inspired by [RDF-star (RDF 1.2)]( quoted triples.
 
 ## Installation
 
