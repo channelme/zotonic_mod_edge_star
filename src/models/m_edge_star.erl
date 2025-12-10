@@ -166,7 +166,7 @@ get_rsc_id(EdgeId, Context) ->
     z_depcache:memo(Memo, {edge_star, rsc_id, EdgeId}, ?HOUR, [ ], Context).
 
 get_edge_id(RscId, Context) ->
-    Memo = fun() -> z_db:q1("SELECT rsc_id FROM edge_star WHERE rsc_id = $1", [RscId], Context) end,
+    Memo = fun() -> z_db:q1("SELECT edge_id FROM edge_star WHERE rsc_id = $1", [RscId], Context) end,
     z_depcache:memo(Memo, {edge_star, edge_id, RscId}, ?HOUR, [ RscId ], Context).
 
 install(Context) ->
