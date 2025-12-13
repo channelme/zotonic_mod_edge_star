@@ -31,6 +31,8 @@
     object_edge_ids/3,
     objects/3,
     subjects/3,
+    get_edge_id/2,
+    get_rsc_id/2,
     reify/2,
     install/1
 ]).
@@ -40,6 +42,22 @@
 %%
 %% Model topic api
 %%
+
+m_get([ EdgeId, <<"is_reified">> | Rest ], _Msg, Context) ->
+    case get_rsc_id(EdgeId, Context) of
+        RscId when is_integer(RscId) ->
+            {ok, {true, Rest}};
+        _ ->
+            {ok, {false, Rest}}
+    end;
+
+m_get([ EdgeId, <<"rsc_id">> | Rest ], _Msg, Context) ->
+    case get_rsc_id(EdgeId, Context) of
+        {error, _} ->
+            {error, enoent};
+        MaybeRsc ->
+            {ok, {MaybeRsc, Rest}}
+    end;
 
 m_get([ <<"o">>, TS, TP, TO, Predicate | Rest ], _Msg, Context) ->
     {ok, {object_edge_ids({TS, TP, TO}, Predicate, Context), Rest}};
@@ -69,7 +87,6 @@ m_get(_Path, _Msg, _Context) ->
 %%
 
 object_edge_ids({_, _, _}=Triple, Pred, Context) ->
-    %% Note: RDF 1.2 does not allow triples to become subjects. So maybe this is nonsense.
     case get_rsc_id(Triple, Context) of
         Object when is_integer(Object) ->
             [ maybe_expand_triple(RscId, EdgeId, Context) || {RscId, EdgeId} <- m_edge:object_edge_ids(Object, Pred, Context) ];
@@ -138,7 +155,7 @@ insert(Subject, Predicate, Object, Opts, Context) when is_integer(Object) ->
 
 reify(EdgeId, Context) ->
     T = fun(Ctx) ->
-                case get_rsc_id(EdgeId, Ctx) of
+                case get_rsc_id_raw(EdgeId, Ctx) of
                     Id when is_integer(Id) ->
                         {ok, Id};
                     undefined ->
@@ -166,7 +183,14 @@ reify(EdgeId, Context) ->
                 end
         end,
 
-    z_db:transaction(T, z_acl:sudo(Context)).
+    case z_db:transaction(T, z_acl:sudo(Context)) of
+        {ok, RscId} ->
+            z_depcache:flush(RscId, Context),
+            z_depcache:flush({edge_star, EdgeId}, Context),
+            {ok, RscId};
+        {error, _}=Error ->
+            Error
+    end.
 
 get_rsc_id({Subject, Predicate, Object}, Context) when is_integer(Object) ->
     get_rsc_id(m_edge:get_id(Subject, Predicate, Object, Context), Context);
@@ -175,12 +199,36 @@ get_rsc_id({Subject, Predicate, Object}, Context) when is_tuple(Object) ->
 get_rsc_id(undefined, _Context) ->
     undefined;
 get_rsc_id(EdgeId, Context) ->
-    Memo = fun() -> z_db:q1("SELECT rsc_id FROM edge_star WHERE edge_id = $1", [EdgeId], Context) end,
-    z_depcache:memo(Memo, {edge_star, rsc_id, EdgeId}, ?HOUR, [ ], Context).
+    Key = {edge_star, rsc_id, EdgeId},
+    case z_depcache:get(Key, Context) of
+        {ok, Value} ->
+            Value;
+        undefined ->
+            case get_rsc_id_raw(EdgeId, Context) of
+                undefined ->
+                    _ = z_depcache:set(Key, undefined, ?DAY, [{edge_star, EdgeId}], Context),
+                    undefined;
+                RscId when is_integer(RscId) ->
+                    _ = z_depcache:set(Key, RscId, ?DAY, [RscId, {edge_star, EdgeId}], Context),
+                    RscId
+            end
+    end.
 
 get_edge_id(RscId, Context) ->
-    Memo = fun() -> z_db:q1("SELECT edge_id FROM edge_star WHERE rsc_id = $1", [RscId], Context) end,
-    z_depcache:memo(Memo, {edge_star, edge_id, RscId}, ?HOUR, [ RscId ], Context).
+    Key = {edge_star, edge_id, RscId},
+    case z_depcache:get(Key, Context) of
+        {ok, Value} ->
+            Value;
+        undefined ->
+            case get_edge_id_raw(RscId, Context) of
+                undefined ->
+                    _ = z_depcache:set(Key, undefined, ?DAY, [ RscId ], Context),
+                    undefined;
+                EdgeId when is_integer(EdgeId) ->
+                    _ = z_depcache:set(Key, EdgeId, ?DAY, [ RscId, {edge_star, EdgeId} ], Context)),
+                    EdgeId
+            end
+    end.
 
 install(Context) ->
     case z_db:table_exists(edge_star, Context) of
@@ -219,6 +267,12 @@ install(Context) ->
 %%
 %% Helpers
 %%
+
+get_edge_id_raw(RscId, Context) ->
+    z_db:q1("SELECT edge_id FROM edge_star WHERE rsc_id = $1", [RscId], Context).
+
+get_rsc_id_raw(EdgeId, Context) ->
+    z_db:q1("SELECT rsc_id FROM edge_star WHERE edge_id = $1", [EdgeId], Context).
 
 maybe_expand_triple(Id, EdgeId, Context) ->
     case m_rsc:is_a(Id, edge_resource, Context) of

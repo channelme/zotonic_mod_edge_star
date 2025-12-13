@@ -26,9 +26,24 @@
 -include_lib("zotonic_core/include/zotonic.hrl").
 
 -export([
+    event/2,
     manage_schema/2,
     update_datamodel/1
 ]).
+
+event(#postback{message={reify_edge, Args}}, Context) ->
+    {edge, Id} = proplists:lookup(edge, Args),
+
+    case m_edge_star:reify(Id, Context) of
+        {ok, _RscId} ->
+            OnSuccess = proplists:get_all_values(on_success, Args),
+            z_render:wire(lists:flatten(OnSuccess), Context);
+        {error, Reason} ->
+            ?LOG_WARNING(#{ text => "Could not create edge_resource.",
+                            edge_id => Id,
+                            reason => Reason }),
+            z_render:growl_error("Sorry, could not create edge resource.", Context)
+    end.
 
 manage_schema(_Version, Context) ->
     update_datamodel(Context),
