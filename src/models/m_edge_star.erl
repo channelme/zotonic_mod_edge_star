@@ -225,7 +225,7 @@ get_edge_id(RscId, Context) ->
                     _ = z_depcache:set(Key, undefined, ?DAY, [ RscId ], Context),
                     undefined;
                 EdgeId when is_integer(EdgeId) ->
-                    _ = z_depcache:set(Key, EdgeId, ?DAY, [ RscId, {edge_star, EdgeId} ], Context)),
+                    _ = z_depcache:set(Key, EdgeId, ?DAY, [ RscId, {edge_star, EdgeId} ], Context),
                     EdgeId
             end
     end.
