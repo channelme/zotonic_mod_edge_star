@@ -31,13 +31,22 @@
     update_datamodel/1
 ]).
 
-event(#postback{message={reify_edge, Args}}, Context) ->
+event(#postback{message={reify_edge, Args}, target=TargetId}, Context) ->
     {edge, Id} = proplists:lookup(edge, Args),
 
     case m_edge_star:reify(Id, Context) of
-        {ok, _RscId} ->
+        {ok, RscId} ->
             OnSuccess = proplists:get_all_values(on_success, Args),
-            z_render:wire(lists:flatten(OnSuccess), Context);
+            OnSuccess1 = case proplists:get_bool(replace_button, Args) of
+                             true ->
+                                 AdminEditUrl = z_dispatcher:url_for(admin_edit_rsc, [{id, RscId}], Context),
+                                 LinkText = z_trans:trans(<<"Edit edge rsc">>, Context),
+                                 Html = <<"<a href=\"", AdminEditUrl/binary, "\" class=\"btn btn-info\">", LinkText/binary, "<\a>">>,
+                                 [{replace, [{target, TargetId}, {text, Html}]} | OnSuccess];
+                             false ->
+                                 OnSuccess
+                         end,
+            z_render:wire(lists:flatten(OnSuccess1), Context);
         {error, Reason} ->
             ?LOG_WARNING(#{ text => "Could not create edge_resource.",
                             edge_id => Id,
